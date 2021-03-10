@@ -62,53 +62,40 @@ def samples(samples, names, dimnames, *args, **kwargs):
         p[0][s].set_title(names[s])
     return fig
 
-#@decorators.check_dataframes()
-def sims_summarised(ts, samples, names=None, data_times=None, data=None, dimnames=["G01", "S", "G2M"], **kwargs):
-    """Plots the simulations from a summarisde array
 
-    Takes a vector with times and a numpy array of shape (3,3,t)
-    (quantiles, dims, times)
-    """
-    # TODO: make this function less messy
-    # TODO: catch more potential edge cases or reduce type support?
-    if type(samples) == np.ndarray:
-        # If there is only one sample, we treat it as one.
-        samples = [samples]
-    elif type(samples) == dict:
-        names = list(samples.keys())
-        samples = list(samples.values())
-    if type(data) == np.ndarray:
-        data = [data]
-        data_times = [data_times]
-    elif type(data) == dict:
-        data_names = list(data.keys())
-        data_times = [data_times[n] for n in data_names]
-        data = [data[n] for n in names]
-    n_samples = len(samples)
-    assert len(data) == n_samples, "Dimension mismatch between times and data"
-    if not names:
-        names = [None for i in range(n_samples)]
-    n_dims = max(map(lambda x: x.shape[1], samples))
-    n_times = max(map(lambda x: x.shape[2], samples))
-    assert n_times == len(ts), "Dimension mismatch between times and data"
-    data_n_dims = max(map(lambda x: x.shape[1], data))
-    data_n_times = max(map(lambda x: x.shape[2], data))
-    assert data_n_dims == n_dims, "Dimension mismatch between data and simulation"
-    if not dimnames:
-        dimnames = [f"Dim {i}" for i in range(n_dims)]
-    fig, p = plt.subplots(n_dims, n_samples, squeeze=False, **kwargs)
-    for (s, sample) in enumerate(samples):
-        d = data[s]
-        for i in range(n_dims):
-            p[i][s].plot(ts, sample[1,i,:], color='red')
-            p[i][s].fill_between(ts, sample[0,i,:], sample[2,i,:], color='pink')
-            p[i][s].errorbar(data_times[s], d[0,i,:], yerr=d[1,i,:],
-                             fmt='.k')
-        p[0][s].set_title(names[s])
-        p[n_dims-1][s].set_xlabel("Time")
-    for i in range(n_dims):
-        p[i][0].set_ylabel(dimnames[i])
+def _sim_summarised(axes, simulation, data):
+    """Plots the simulation and data on specified axes (3-length np array)"""
+    dims = ["g01", "s", "g2m"]
+    stats_data = ["mean", "error"]
+    stats_sim = ["lower", "median", "upper"]
+    cols_data = itertools.product(dims, stats_data)
+    cols_sim = itertools.product(dims, stats_sim)
+    assert all([d in {x[0] for x in sim.columns} for d in dims]), "Missing columns in `sim`"
+    assert all([d in {x[0] for x in data.columns} for d in dims]), "Missing columns in `data`"
+    for (i, dim) in enumerate(dims):
+        axes[i].errorbar(data.index, data[(dim, "mean")], yerr=data[(dim, "error")], fmt='k.')
+        axes[i].plot(simulation.index, simulation[(dim, "median")], color='red')
+        axes[i].fill_between(simulation.index, simulation[(dim, "lower")], simulation[(dim, "upper")], color="pink")
+        axes[i].set_ylabel(dim)
+    return axes
+
+def sim_summarised(simulation: pd.DataFrame, data: pd.DataFrame, **kwargs):
+    """Plots the simulation from a summarised dataframe"""
+    fig, p = plt.subplots(1, len(dims), squeeze=True, **kwargs)
+    _sim_summarised(p, simulation, data)
     return fig
+
+def sims_summarised(simulations: dict, data: dict, byrow=True, **kwargs):
+    """Plots the simulations from a summarised dataframe"""
+    samples = set(simulations.keys()) & set(data.keys())
+    if byrow:
+        fig, p = plt.subplots(length(samples), 3, squeeze=False)
+        p = p.transpose()
+    else:
+        fig, p = plt.subplots(3, length(samples), squeeze=False)
+    for (i, sample) in enumerate(samples):
+        _sim_summarised(p[:,i], simulations[sample], data[sample], name=sample)
+    return fig, p
 
 def fraction_summarised(samples, data=None, **kwargs):
     if type(samples) == pd.DataFrame:
