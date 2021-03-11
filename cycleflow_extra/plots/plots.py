@@ -1,5 +1,7 @@
 """Plotting functions for working with cycleflow"""
 
+import itertools
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -70,63 +72,108 @@ def _sim_summarised(axes, simulation, data):
     stats_sim = ["lower", "median", "upper"]
     cols_data = itertools.product(dims, stats_data)
     cols_sim = itertools.product(dims, stats_sim)
-    assert all([d in {x[0] for x in sim.columns} for d in dims]), "Missing columns in `sim`"
+    assert all([d in {x[0] for x in simulation.columns} for d in dims]), "Missing columns in `sim`"
     assert all([d in {x[0] for x in data.columns} for d in dims]), "Missing columns in `data`"
     for (i, dim) in enumerate(dims):
         axes[i].errorbar(data.index, data[(dim, "mean")], yerr=data[(dim, "error")], fmt='k.')
         axes[i].plot(simulation.index, simulation[(dim, "median")], color='red')
         axes[i].fill_between(simulation.index, simulation[(dim, "lower")], simulation[(dim, "upper")], color="pink")
-        axes[i].set_ylabel(dim)
+        axes[i].set_ylabel(f"fraction {dim} EdU+")
+        axes[i].set_xlabel("time")
     return axes
 
 def sim_summarised(simulation: pd.DataFrame, data: pd.DataFrame, **kwargs):
     """Plots the simulation from a summarised dataframe"""
+    dims = ["g01", "s", "g2m"]
     fig, p = plt.subplots(1, len(dims), squeeze=True, **kwargs)
     _sim_summarised(p, simulation, data)
     return fig
 
 def sims_summarised(simulations: dict, data: dict, byrow=True, **kwargs):
-    """Plots the simulations from a summarised dataframe"""
+    """Plots the simulations from a dict of summarised dataframes"""
     samples = set(simulations.keys()) & set(data.keys())
     if byrow:
-        fig, p = plt.subplots(length(samples), 3, squeeze=False)
+        fig, p = plt.subplots(len(samples), 3, squeeze=False)
         p = p.transpose()
     else:
-        fig, p = plt.subplots(3, length(samples), squeeze=False)
+        fig, p = plt.subplots(3, len(samples), squeeze=False)
     for (i, sample) in enumerate(samples):
-        _sim_summarised(p[:,i], simulations[sample], data[sample], name=sample)
+        _sim_summarised(p[:,i], simulations[sample], data[sample])
+        p[1,i].set_title(sample)
     return fig, p
 
-def fraction_summarised(samples, data=None, **kwargs):
-    if type(samples) == pd.DataFrame:
-        # If there is only one sample, we treat it as one.
-        samples = [samples]
-    elif type(samples) == dict:
-        names = list(samples.keys())
-        samples = list(samples.values())
-    if type(data) == pd.DataFrame:
-        data = [data]
-    elif type(data) == dict:
-        data_names = list(data.keys())
-        data = [data[n] for n in names]
-    n_samples = len(samples)
-    fig, p = plt.subplots(1, n_samples, **kwargs)
-    width = 0.35
-    ixs = [-width/2, +width/2, 1-width/2, 1+width/2]
-    labs = ["Model S", "Data S", "Model G2M", "Data G2M"]
-    for (s, sample) in enumerate(samples):
-        p[s].bar([-width/2], sample.loc["median"]["S"],
-                 yerr=sample.loc[["down", "up"]]["S"].to_numpy().reshape(2,1), width=width, color='pink', edgecolor='red')
-        p[s].bar([+width/2], data[s].loc["S"]["mean"],
-                 yerr=data[s].loc["S"]["error"], width=width, color='lightgray', edgecolor='black')
-        p[s].bar([1-width/2], sample.loc["median"]["G2M"],
-                 yerr=sample.loc[["down", "up"]]["G2M"].to_numpy().reshape(2,1), width=width, color='pink', edgecolor='red')
-        p[s].bar([1+width/2], data[s].loc["G2"]["mean"],
-                 yerr=data[s].loc["G2"]["error"], width=width, color='lightgray', edgecolor='black')
-        p[s].legend(["Model", "Data"])
-        p[s].set_xticks([0,1])
-        p[s].set_xticklabels(["S", "G2M"])
+def _fraction_summarised(axes, sim, data):
+    """Plots the simulation and data on the axes objects specified"""
+    dims = ['s', 'g2m']
+    stats_data = ['mean', 'error']
+    stats_sim = ['lower', 'median', 'upper']
+    assert all([d in sim.index for d in dims]), "Missing indices in `sim`"
+    assert all([d in sim.columns for d in stats_sim]), "Missing columns in `sim`"
+    assert all([d in data.index for d in dims]), "Missing indices in `data`"
+    assert all([d in data.columns for d in stats_data]), "Missing columns in `data`"
+    for i, d in enumerate(dims):
+        simerror = np.abs(np.array(sim.loc[d][["lower", "upper"]]).reshape((2,1)) - sim.loc[d]["median"])
+        axes[i].bar("data", data.loc[d]["mean"], yerr=data.loc[d]["error"])
+        axes[i].bar("model", sim.loc[d]["median"], yerr=simerror)
+        axes[i].set_ylabel(f"{d} in steady state")
+
+def fraction_summarised(sim, data, **kwargs):
+    dims = ['s', 'g2m']
+    fig, p = plt.subplots(1, len(dims), squeeze=True, **kwargs)
+    _fraction_summarised(p, sim, data)
     return fig
+
+def fractions_summarised(sim, data, byrow=True, **kwargs):
+    """Plots the steady state fractions"""
+    samples = set(sim.keys()) & set(data.keys())
+    if byrow:
+        fig, p = plt.subplots(len(samples), 2, squeeze=False)
+        p = p.transpose()
+    else:
+        fig, p = plt.subplots(2, len(samples), squeeze=False)
+    for (i, sample) in enumerate(samples):
+        _fraction_summarised(p[:,i], sim[sample], data[sample])
+        p[0,i].set_title(sample)
+    return fig, p
+
+def combined_summarised(edu_sim, edu_data, ss_sim, ss_data, **kwargs):
+    """Plot combined fit"""
+    fig = plt.figure(**kwargs)
+    axd = fig.subplot_mosaic(
+        [["edu_g01", "edu_s", "edu_g2m", "ss_s", "ss_g2m"]],
+        gridspec_kw={"width_ratios": (0.25, 0.25, 0.25, 0.125, 0.125)}
+    )
+    edu_panes = [v for (k, v) in axd.items() if 'edu' in k]
+    ss_panes = [v for (k, v) in axd.items() if 'ss' in k]
+    _sim_summarised(edu_panes, edu_sim, edu_data)
+    _fraction_summarised(ss_panes, ss_sim, ss_data)
+    return fig
+
+def combineds_summarised(edu_sim, edu_data, ss_sim, ss_data, **kwargs):
+    """Plot combined fit"""
+    samples = edu_sim.keys() & edu_data.keys() & ss_sim.keys() & ss_data.keys()
+    fig = plt.figure(**kwargs)
+    axd = fig.subplot_mosaic(
+        [[f"{s}::edu_g01",
+          f"{s}::edu_s",
+          f"{s}::edu_g2m",
+          f"{s}::ss_s",
+          f"{s}::ss_g2m"]
+         for s in samples
+         ],
+        gridspec_kw={"width_ratios": (0.25, 0.25, 0.25, 0.125, 0.125)}
+    )
+    edu_panes = {k: v for (k, v) in axd.items() if 'edu' in k}
+    ss_panes = {k: v for (k, v) in axd.items() if 'ss' in k}
+    for s in samples:
+        axd[f"{s}::edu_g01"].set_title(s)
+        e_panes = [v for (k, v) in sorted(edu_panes.items()) if k.startswith(f"{s}::")]
+        s_panes = [v for (k, v) in sorted(ss_panes.items()) if k.startswith(f"{s}::")]
+        _sim_summarised(e_panes, edu_sim[s], edu_data[s])
+        _fraction_summarised(s_panes, ss_sim[s], ss_data[s])
+    return fig
+
+
 
 def model(ts, samples, data=None, **kwargs):
     pass
