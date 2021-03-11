@@ -113,8 +113,8 @@ def _fraction_summarised(axes, sim, data):
     assert all([d in data.columns for d in stats_data]), "Missing columns in `data`"
     for i, d in enumerate(dims):
         simerror = np.abs(np.array(sim.loc[d][["lower", "upper"]]).reshape((2,1)) - sim.loc[d]["median"])
-        axes[i].bar("data", data.loc[d]["mean"], yerr=data.loc[d]["error"])
-        axes[i].bar("model", sim.loc[d]["median"], yerr=simerror)
+        axes[i].bar("data", data.loc[d]["mean"], yerr=data.loc[d]["error"], fc='lightgray', ec='black', ecolor='black')
+        axes[i].bar("model", sim.loc[d]["median"], yerr=simerror, fc='pink', ec='red', ecolor='pink')
         axes[i].set_ylabel(f"{d} in steady state")
 
 def fraction_summarised(sim, data, **kwargs):
@@ -140,7 +140,7 @@ def combined_summarised(edu_sim, edu_data, ss_sim, ss_data, **kwargs):
     """Plot combined fit"""
     fig = plt.figure(**kwargs)
     axd = fig.subplot_mosaic(
-        [["edu_g01", "edu_s", "edu_g2m", "ss_s", "ss_g2m"]],
+        [["edu_1.g01", "edu_2.s", "edu_3.g2m", "ss_1.s", "ss_2.g2m"]],
         gridspec_kw={"width_ratios": (0.25, 0.25, 0.25, 0.125, 0.125)}
     )
     edu_panes = [v for (k, v) in axd.items() if 'edu' in k]
@@ -154,11 +154,11 @@ def combineds_summarised(edu_sim, edu_data, ss_sim, ss_data, **kwargs):
     samples = edu_sim.keys() & edu_data.keys() & ss_sim.keys() & ss_data.keys()
     fig = plt.figure(**kwargs)
     axd = fig.subplot_mosaic(
-        [[f"{s}::edu_g01",
-          f"{s}::edu_s",
-          f"{s}::edu_g2m",
-          f"{s}::ss_s",
-          f"{s}::ss_g2m"]
+        [[f"{s}::edu_1.g01",
+          f"{s}::edu_2.s",
+          f"{s}::edu_3.g2m",
+          f"{s}::ss_1.s",
+          f"{s}::ss_1.g2m"]
          for s in samples
          ],
         gridspec_kw={"width_ratios": (0.25, 0.25, 0.25, 0.125, 0.125)}
@@ -166,7 +166,7 @@ def combineds_summarised(edu_sim, edu_data, ss_sim, ss_data, **kwargs):
     edu_panes = {k: v for (k, v) in axd.items() if 'edu' in k}
     ss_panes = {k: v for (k, v) in axd.items() if 'ss' in k}
     for s in samples:
-        axd[f"{s}::edu_g01"].set_title(s)
+        axd[f"{s}::edu_1.g01"].set_title(s)
         e_panes = [v for (k, v) in sorted(edu_panes.items()) if k.startswith(f"{s}::")]
         s_panes = [v for (k, v) in sorted(ss_panes.items()) if k.startswith(f"{s}::")]
         _sim_summarised(e_panes, edu_sim[s], edu_data[s])
